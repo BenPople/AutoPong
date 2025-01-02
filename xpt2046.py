@@ -114,9 +114,6 @@ class Touch(object):
 
     def is_pressed(self):
         """
-        Returns True if the pen is (likely) down.
-        The XPT2046 can read Z1/Z2 for pressure, or we can guess by reading X/Y.
-        Here, we do a quick check with raw_touch.
+        Returns True if the pen is - likely - down. Partly guessing by reading X/Y.
         """
-        sample = self.raw_touch()
-        return (sample is not None)
+        return (self.raw_touch() is not None)

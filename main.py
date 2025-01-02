@@ -204,7 +204,7 @@ def touch_handler(x, y):
     """
     Defines game logic for touchscreen touches.
     """
-    print("X")
+    print(f"X - {randint(1, 10)}")
 
 def poll_touch():
     """
