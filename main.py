@@ -3,6 +3,8 @@ from ili9341 import Display, color565
 from framebuf import FrameBuffer, RGB565
 from time import sleep_ms
 from random import randint
+import memory
+import gc
 
 # Screen dimensions
 WIDTH = 240
@@ -14,6 +16,7 @@ BALL_COLOR = color565(0, 0, 255)   # Blue
 BG_COLOR = color565(0, 0, 0)       # Black
 
 # Anims
+ANIMS = False
 ANIM_COLOR = color565(255, 0, 0)   # Blue (BGR for MPython framebuf)
 
 # Initial position & velocity
@@ -35,7 +38,6 @@ backlight.on()
 # Set up SPI + Display
 spi = SPI(1, baudrate=40_000_000, sck=Pin(14), mosi=Pin(13))
 display = Display(spi, dc=Pin(2), cs=Pin(15), rst=Pin(15), rotation=270, bgr=False)
-
 
 def update_ball_position(x, y, vx, vy):
     """Return new ball coordinates & velocities with gravity pulling right."""
@@ -78,13 +80,15 @@ def update_ball_position(x, y, vx, vy):
         # Ensure velocities remain integers
         vx, vy = int(vx), int(vy)
 
-        # Draw side animation
-        draw_side_animation(bounce)
+        # Draw side animation & GC
+        if ANIMS: draw_side_animation(bounce)
+        else: gc.collect()
 
     return nx, ny, vx, vy
 
 def draw_side_animation(side):
     """Animation when the ball bounces on a side, focused around the ball."""
+    gc.collect()
     effect_size = 50  # Number of pixels around the ball for the animation
 
     if side == "left":
@@ -126,7 +130,6 @@ def fill_ball(framebuf, x0, y0, r, color):
             xx = x0 + dx
             if dx * dx + dy_sq <= r_sq:
                 framebuf.pixel(xx, yy, color)
-
 
 # Clear the full screen at startup
 display.fill_rectangle(0, 0, WIDTH, HEIGHT, BG_COLOR)
@@ -170,3 +173,45 @@ try:
 
 except KeyboardInterrupt:
     display.cleanup() 
+
+def is_button_pressed(x, y):
+    return BUTTON_X <= x <= BUTTON_X + BUTTON_WIDTH and BUTTON_Y <= y <= BUTTON_Y + BUTTON_HEIGHT
+
+button_pressed = False
+
+# Interrupt handler
+def touch_handler(x, y):
+    global button_pressed
+    if is_button_pressed(x, y):
+        button_pressed = True
+
+# Set up Touch
+touch_spi = SPI(2, baudrate=1_000_000, sck=Pin(25), mosi=Pin(32), miso=Pin(39))
+touch = Touch(
+    touch_spi,
+    cs=Pin(33),
+    int_pin=Pin(36),
+    width=HEIGHT,
+    height=WIDTH,
+    int_handler=touch_handler
+)
+
+def cleanup():
+    touch.int_pin.irq(handler=None)  # Disable interrupt handler
+    touch_spi.deinit()
+    display.cleanup()
+
+try:
+    draw_startup_screen()
+    connect_to_wifi()
+    while True:
+        if button_pressed:
+            print("Button pressed. Starting game...")
+            break
+        sleep(0.1)
+
+except KeyboardInterrupt:
+    display.cleanup()
+
+finally:
+    cleanup()

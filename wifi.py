@@ -9,11 +9,11 @@ def connect_to_wifi():
     wlan.active(True)
 
     if not wlan.isconnected():
-        print('WiFi--> Connecting to', SSID, '...')
+        print(f'WiFi --> Connecting to {SSID}...')
 
         wlan.connect(SSID, KEY)
         while not wlan.isconnected():
             pass
 
-    print('WiFi --> Connected @', wlan.ipconfig('addr4')[0])
+    print(f'WiFi --> Connected to {SSID} - IPv4 {wlan.ipconfig('addr4')[0]}')
     return wlan
