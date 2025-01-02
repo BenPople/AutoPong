@@ -1,6 +1,6 @@
-from machine import Pin, SPI # type: ignore
+from machine import Pin, SPI  # type: ignore
 from ili9341 import Display, color565
-from framebuf import FrameBuffer, RGB565 # type: ignore
+from framebuf import FrameBuffer, RGB565  # type: ignore
 from time import sleep_ms, ticks_ms, ticks_diff
 from random import randint
 import gc
@@ -15,13 +15,13 @@ HEIGHT = 320
 
 # Ball
 BALL_RADIUS = 10
-BALL_COLOR = color565(0, 0, 255)   # Blue
-BG_COLOR = color565(0, 0, 0)       # Black
+BALL_COLOR = color565(0, 0, 255)  # Blue
+BG_COLOR = color565(0, 0, 0)      # Black
 
 # Anims
-ANIMS = True                       # Set True to enable side animations
-ANIM_COLOR = color565(255, 0, 0)   # Red (BGR for MPython framebuf)
-SIDE_ANIM_DURATION = 100           # Animation duration in ms
+ANIMS = True
+ANIM_COLOR = color565(255, 0, 0)  # Red
+SIDE_ANIM_DURATION = 100          # Animation duration in ms
 
 # Physics
 GRAVITY = 0.025
@@ -47,15 +47,6 @@ display = Display(spi, dc=Pin(2), cs=Pin(15), rst=Pin(15), rotation=270, bgr=Fal
 # Non-blocking Side Animation State
 # --------------------------------------------------------------------------------
 
-# We'll store info about an active side animation here:
-# e.g. {
-#   'side': 'left' or 'right' or 'top' or 'bottom',
-#   'x': ...,
-#   'y': ...,
-#   'width': ...,
-#   'height': ...,
-#   'start_time': ticks_ms() at the moment of creation
-# }
 current_anim = None
 
 def update_animation():
@@ -65,7 +56,8 @@ def update_animation():
     (SIDE_ANIM_DURATION) to remove it.
     """
     global current_anim
-    if current_anim is None: return
+    if current_anim is None:
+        return
 
     if ticks_diff(ticks_ms(), current_anim['start_time']) >= SIDE_ANIM_DURATION:
         # Time to remove the animation
@@ -75,7 +67,6 @@ def update_animation():
         width = current_anim['width']
         height = current_anim['height']
 
-        # Erase the animation bounding rect
         display.fill_rectangle(x, y, width, height, BG_COLOR)
         current_anim = None
 
@@ -86,7 +77,6 @@ def draw_side_animation_nonblocking(side, bx, by):
     then remove it in update_animation() after SIDE_ANIM_DURATION ms.
     """
     global current_anim
-
     gc.collect()
 
     # If there is already an active animation, erase it immediately
@@ -121,12 +111,11 @@ def draw_side_animation_nonblocking(side, bx, by):
         y = HEIGHT - 5
         width = min(effect_size, WIDTH - x)
         height = 5
-    else: return
+    else:
+        return
 
-    # Draw the animation block now
     display.fill_rectangle(x, y, width, height, ANIM_COLOR)
 
-    # Store the animation state data for later removal
     current_anim = {
         'side': side,
         'x': x,
@@ -157,11 +146,10 @@ def update_ball_position(x, y, vx, vy):
     If there's a bounce, trigger a side animation (non-blocking).
     """
     vx += GRAVITY
-
     nx, ny = int(x + vx), int(y + vy)
     bounce = None
 
-    # Top/Bottom wall collision
+    # Top/Bottom
     if ny - BALL_RADIUS < 0:
         ny, vy = BALL_RADIUS, -vy
         bounce = "top"
@@ -169,7 +157,7 @@ def update_ball_position(x, y, vx, vy):
         ny, vy = HEIGHT - BALL_RADIUS - 1, int(-vy * 0.9)
         bounce = "bottom"
 
-    # Left/Right wall collision
+    # Left/Right
     if nx - BALL_RADIUS < 0:
         nx, vx = BALL_RADIUS, -vx
         bounce = "left"
@@ -177,7 +165,7 @@ def update_ball_position(x, y, vx, vy):
         nx, vx = WIDTH - BALL_RADIUS - 1, int(-vx * 0.9)
         bounce = "right"
 
-    # Random deflection on bounce - ensure rebound is not too weak or zero
+    # Side bounce logic
     if bounce:
         deflection = randint(-2, 2)
         if bounce in ["top", "bottom"]:
@@ -197,38 +185,36 @@ def update_ball_position(x, y, vx, vy):
     return nx, ny, vx, vy
 
 # --------------------------------------------------------------------------------
-# Touch Input (Stub Implementation Below)
+# Touch Input (Polled, Non-blocking)
 # --------------------------------------------------------------------------------
 
-BUTTON_X = 10
-BUTTON_Y = 10
-BUTTON_WIDTH = 80
-BUTTON_HEIGHT = 40
-
-def is_button_pressed(x, y):
-    return BUTTON_X <= x <= BUTTON_X + BUTTON_WIDTH and BUTTON_Y <= y <= BUTTON_Y + BUTTON_HEIGHT
-
-button_pressed = False
-
-def touch_handler(x, y):
-    """
-    Interrupt/touch handler. If user taps the “button area,” set button_pressed = True.
-    """
-    global button_pressed
-    if is_button_pressed(x, y):
-        button_pressed = True
-
-# Touch Setup
-touch_spi = SPI(2, baudrate=1_000_000, sck=Pin(25), mosi=Pin(32), miso=Pin(39))
 from xpt2046 import Touch
+touch_spi = SPI(2, baudrate=1_000_000, sck=Pin(25), mosi=Pin(32), miso=Pin(39))
+
 touch = Touch(
     touch_spi,
     cs=Pin(33),
-    int_pin=Pin(36),
+    int_pin=Pin(36),  # We don't rely on interrupts, just poll
+    int_handler=None, # No interrupt usage
     width=HEIGHT,
-    height=WIDTH,
-    int_handler=touch_handler
+    height=WIDTH
 )
+
+def touch_handler(x, y):
+    """
+    Defines game logic for touchscreen touches.
+    """
+    print("X")
+
+def poll_touch():
+    """
+    Call this each frame to do a quick, non-blocking touch check.
+    If a valid reading is available, call touch_handler(x, y).
+    """
+    coords = touch.get_touch()
+    if coords:
+        x, y = coords
+        touch_handler(x, y)
 
 # --------------------------------------------------------------------------------
 # Cleanup
@@ -239,7 +225,7 @@ def cleanup():
     Cleanup resources.
     """
     if touch:
-        touch.int_pin.irq(handler=None)  # Disable touch interrupts
+        touch.int_pin.irq(handler=None)  # Disable any leftover interrupts
         touch_spi.deinit()
     display.cleanup()
 
@@ -251,41 +237,44 @@ try:
     display.fill_rectangle(0, 0, WIDTH, HEIGHT, BG_COLOR)
 
     while True:
+        # Poll once per frame - no blocking
+        poll_touch()
+
         new_x, new_y, dx, dy = update_ball_position(ball_x, ball_y, dx, dy)
 
         if new_x != ball_x or new_y != ball_y:
-            # Bounding box around old & new positions
-            padding = 0
-            x_min = min(ball_x, new_x) - BALL_RADIUS - padding
-            y_min = min(ball_y, new_y) - BALL_RADIUS - padding
-            x_max = max(ball_x, new_x) + BALL_RADIUS + padding
-            y_max = max(ball_y, new_y) + BALL_RADIUS + padding
+            # Only redraw the bounding box region where the ball moved
+            x_min = min(ball_x, new_x) - BALL_RADIUS
+            y_min = min(ball_y, new_y) - BALL_RADIUS
+            x_max = max(ball_x, new_x) + BALL_RADIUS
+            y_max = max(ball_y, new_y) + BALL_RADIUS
 
             # Clip to screen
             x_min, y_min = max(0, x_min), max(0, y_min)
             x_max, y_max = min(WIDTH - 1, x_max), min(HEIGHT - 1, y_max)
-            region_width, region_height = x_max - x_min + 1, y_max - y_min + 1
+            region_width = x_max - x_min + 1
+            region_height = y_max - y_min + 1
 
-            # Allocate a buffer for this region
+            # Prepare a small buffer for that region
             region_buf = bytearray(region_width * region_height * 2)
             fb = FrameBuffer(region_buf, region_width, region_height, RGB565)
 
             # Fill region with background
             fb.fill(BG_COLOR)
 
-            # Draw the new ball in the buffer
+            # Draw the ball in the buffer
             offset_x = new_x - x_min
             offset_y = new_y - y_min
             fill_ball(fb, offset_x, offset_y, BALL_RADIUS, BALL_COLOR)
 
-            # Write buffer to the display
+            # Push buffer to the display
             display.block(x_min, y_min, x_max, y_max, region_buf)
 
-            # Update ball position
             ball_x, ball_y = new_x, new_y
 
         update_animation()
 
+        # Frame delay (0 -> max speed)
         sleep_ms(FRAME_TIME)
 
 except KeyboardInterrupt:
