@@ -1,6 +1,6 @@
-from machine import Pin, SPI
+from machine import Pin, SPI # type: ignore
 from ili9341 import Display, color565
-from framebuf import FrameBuffer, RGB565
+from framebuf import FrameBuffer, RGB565 # type: ignore
 from time import sleep_ms, ticks_ms, ticks_diff
 from random import randint
 import gc

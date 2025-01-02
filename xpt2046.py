@@ -5,15 +5,15 @@ from time import sleep
 class Touch(object):
     """Serial interface for XPT2046 Touch Screen Controller."""
 
-    # Command constants from ILI9341 datasheet
-    GET_X = const(0b11010000)  # X position
-    GET_Y = const(0b10010000)  # Y position
-    GET_Z1 = const(0b10110000)  # Z1 position
-    GET_Z2 = const(0b11000000)  # Z2 position
-    GET_TEMP0 = const(0b10000000)  # Temperature 0
-    GET_TEMP1 = const(0b11110000)  # Temperature 1
-    GET_BATTERY = const(0b10100000)  # Battery monitor
-    GET_AUX = const(0b11100000)  # Auxiliary input to ADC
+    # Command constants from ILI9341 datasheet 
+    GET_X = const(0b11010000)  # X position # type: ignore
+    GET_Y = const(0b10010000)  # Y position # type: ignore
+    GET_Z1 = const(0b10110000)  # Z1 position # type: ignore
+    GET_Z2 = const(0b11000000)  # Z2 position # type: ignore
+    GET_TEMP0 = const(0b10000000)  # Temperature 0 # type: ignore
+    GET_TEMP1 = const(0b11110000)  # Temperature 1 # type: ignore
+    GET_BATTERY = const(0b10100000)  # Battery monitor # type: ignore
+    GET_AUX = const(0b11100000)  # Auxiliary input to ADC # type: ignore
 
     def __init__(self, spi, cs, int_pin=None, int_handler=None,
                  width=240, height=320,

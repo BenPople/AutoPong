@@ -1,4 +1,4 @@
-import network
+import network # type: ignore
 
 SSID = 'BT-69CPT3-LEGACY'
 KEY = 'CFXTPYLWMM'
