@@ -4,6 +4,7 @@ from framebuf import FrameBuffer, RGB565  # type: ignore
 from time import sleep_ms, ticks_ms, ticks_diff
 from random import randint
 import gc
+from math import sqrt
 
 # --------------------------------------------------------------------------------
 # Global Configuration
@@ -21,8 +22,9 @@ ANIM_COLOR = color565(255, 0, 0)  # Red
 SIDE_ANIM_DURATION = 100          # Animation duration in ms
 
 GRAVITY = 0.025
+PLAYER_NUDGE_FORCE = 2.0
 
-FRAME_TIME = 0  # ~120 FPS
+FRAME_TIME = 0
 
 ball_x = WIDTH // 2
 ball_y = HEIGHT // 2
@@ -158,50 +160,79 @@ def update_ball_position(x, y, vx, vy):
     return nx, ny, vx, vy
 
 # --------------------------------------------------------------------------------
-# Touch Input (Pen-Down Only Once)
+# Touch Input (Pen-Down Only Once) with Transform
 # --------------------------------------------------------------------------------
 
 from xpt2046 import Touch
 touch_spi = SPI(2, baudrate=1_000_000, sck=Pin(25), mosi=Pin(32), miso=Pin(39))
 
+# The Touch driver is created with (width=HEIGHT, height=WIDTH) because physically
+# the device might be in "landscape." But our display logic is 240 (X) × 320 (Y).
 touch = Touch(
     touch_spi,
     cs=Pin(33),
     int_pin=Pin(36),  
     int_handler=None, 
-    width=HEIGHT,
-    height=WIDTH
+    width=HEIGHT,  # 320
+    height=WIDTH   # 240
 )
 
-# Track whether the pen was down in the previous frame
 touch_down = False
 
 def touch_handler(x, y):
     """
     Called once when the user first touches.
+    If within 20 px of the ball, nudge it towards the furthest wall.
     """
-    print(f"Pen down once at {x}, {y}. Random: {randint(1, 100)}")
+    global ball_x, ball_y, dx, dy
+
+    dist_to_ball = sqrt((x - ball_x)**2 + (y - ball_y)**2)
+    print(f"Pen down at {x},{y} - distance to ball center is {dist_to_ball:.2f}")
+
+    if dist_to_ball <= 100:
+        dist_top = ball_y
+        dist_bottom = HEIGHT - ball_y
+        dist_left = ball_x
+        dist_right = WIDTH - ball_x
+
+        directions = {
+            'top': dist_top,
+            'bottom': dist_bottom,
+            'left': dist_left,
+            'right': dist_right
+        }
+        furthest_wall = max(directions, key=directions.get)
+
+        if furthest_wall == 'top':
+            dy -= PLAYER_NUDGE_FORCE
+        elif furthest_wall == 'bottom':
+            dy += PLAYER_NUDGE_FORCE
+        elif furthest_wall == 'left':
+            dx -= PLAYER_NUDGE_FORCE
+        elif furthest_wall == 'right':
+            dx += PLAYER_NUDGE_FORCE
 
 def poll_touch():
     """
-    Checks if the screen is being touched.
-      - If screen is newly pressed (was up, now down), call touch_handler(...) once.
-      - If still pressed in subsequent frames, do nothing.
-      - If touch is false, just reset state so next press triggers again.
+    - We check touch.is_pressed().
+    - If newly pressed, read the raw coords from get_touch(), transform them,
+      and call touch_handler.
+    - If still pressed, do nothing.
+    - If not pressed, reset so next press triggers again.
     """
     global touch_down
 
     if touch.is_pressed():
-        # If pen was not down before, call our handler for a new press
         if not touch_down:
             coords = touch.get_touch()
             if coords is not None:
-                x, y = coords
-                touch_handler(x, y)
+                raw_x, raw_y = coords
+                x_new = raw_y
+                y_new = (WIDTH - raw_x - 1)
+                touch_handler(x_new, y_new)
 
-            touch_down = True  # Mark pen is currently down
+            touch_down = True
     else:
-        # Pen is not pressed this frame
         touch_down = False
 
 # --------------------------------------------------------------------------------
@@ -222,20 +253,16 @@ try:
     display.fill_rectangle(0, 0, WIDTH, HEIGHT, BG_COLOR)
 
     while True:
-        # Poll for new pen presses once per frame
         poll_touch()
 
-        # Update the ball position
         new_x, new_y, dx, dy = update_ball_position(ball_x, ball_y, dx, dy)
 
-        # Only redraw the bounding box where the ball moved
         if new_x != ball_x or new_y != ball_y:
             x_min = min(ball_x, new_x) - BALL_RADIUS
             y_min = min(ball_y, new_y) - BALL_RADIUS
             x_max = max(ball_x, new_x) + BALL_RADIUS
             y_max = max(ball_y, new_y) + BALL_RADIUS
 
-            # Clip
             x_min, y_min = max(0, x_min), max(0, y_min)
             x_max, y_max = min(WIDTH - 1, x_max), min(HEIGHT - 1, y_max)
 
