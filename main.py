@@ -9,77 +9,56 @@ import gc
 # Global Configuration
 # --------------------------------------------------------------------------------
 
-# Screen dimensions
 WIDTH = 240
 HEIGHT = 320
 
-# Ball
 BALL_RADIUS = 10
 BALL_COLOR = color565(0, 0, 255)  # Blue
 BG_COLOR = color565(0, 0, 0)      # Black
 
-# Anims
 ANIMS = True
 ANIM_COLOR = color565(255, 0, 0)  # Red
 SIDE_ANIM_DURATION = 100          # Animation duration in ms
 
-# Physics
 GRAVITY = 0.025
 
-# Frame timing
 FRAME_TIME = 0  # ~120 FPS
 
-# Initial position & velocity
 ball_x = WIDTH // 2
 ball_y = HEIGHT // 2
 dx = 1
 dy = 1
 
-# Turn on display backlight
 backlight = Pin(21, Pin.OUT)
 backlight.on()
 
-# Set up SPI + Display
 spi = SPI(1, baudrate=40_000_000, sck=Pin(14), mosi=Pin(13))
 display = Display(spi, dc=Pin(2), cs=Pin(15), rst=Pin(15), rotation=270, bgr=False)
 
 # --------------------------------------------------------------------------------
-# Non-blocking Side Animation State
+# Non-blocking Side Animation
 # --------------------------------------------------------------------------------
 
 current_anim = None
 
 def update_animation():
-    """
-    Called each frame from the main loop.
-    If an animation is active, check if enough time has passed
-    (SIDE_ANIM_DURATION) to remove it.
-    """
     global current_anim
     if current_anim is None:
         return
 
     if ticks_diff(ticks_ms(), current_anim['start_time']) >= SIDE_ANIM_DURATION:
-        # Time to remove the animation
         side = current_anim['side']
         x = current_anim['x']
         y = current_anim['y']
         width = current_anim['width']
         height = current_anim['height']
-
         display.fill_rectangle(x, y, width, height, BG_COLOR)
         current_anim = None
 
 def draw_side_animation_nonblocking(side, bx, by):
-    """
-    Trigger a new side animation (no blocking sleep).
-    Immediately draw the effect, store its position & time in current_anim,
-    then remove it in update_animation() after SIDE_ANIM_DURATION ms.
-    """
     global current_anim
     gc.collect()
 
-    # If there is already an active animation, erase it immediately
     if current_anim is not None:
         display.fill_rectangle(
             current_anim['x'],
@@ -130,7 +109,6 @@ def draw_side_animation_nonblocking(side, bx, by):
 # --------------------------------------------------------------------------------
 
 def fill_ball(framebuf, x0, y0, r, color):
-    """Draw a filled circle at (x0, y0) within the local coordinate space."""
     r_sq = r * r
     for dy in range(-r, r + 1):
         yy = y0 + dy
@@ -141,10 +119,6 @@ def fill_ball(framebuf, x0, y0, r, color):
                 framebuf.pixel(xx, yy, color)
 
 def update_ball_position(x, y, vx, vy):
-    """
-    Return new ball coordinates & velocities with gravity pulling right.
-    If there's a bounce, trigger a side animation (non-blocking).
-    """
     vx += GRAVITY
     nx, ny = int(x + vx), int(y + vy)
     bounce = None
@@ -165,7 +139,6 @@ def update_ball_position(x, y, vx, vy):
         nx, vx = WIDTH - BALL_RADIUS - 1, int(-vx * 0.9)
         bounce = "right"
 
-    # Side bounce logic
     if bounce:
         deflection = randint(-2, 2)
         if bounce in ["top", "bottom"]:
@@ -185,7 +158,7 @@ def update_ball_position(x, y, vx, vy):
     return nx, ny, vx, vy
 
 # --------------------------------------------------------------------------------
-# Touch Input (Polled, Non-blocking)
+# Touch Input (Pen-Down Only Once)
 # --------------------------------------------------------------------------------
 
 from xpt2046 import Touch
@@ -194,38 +167,50 @@ touch_spi = SPI(2, baudrate=1_000_000, sck=Pin(25), mosi=Pin(32), miso=Pin(39))
 touch = Touch(
     touch_spi,
     cs=Pin(33),
-    int_pin=Pin(36),  # We don't rely on interrupts, just poll
-    int_handler=None, # No interrupt usage
+    int_pin=Pin(36),  
+    int_handler=None, 
     width=HEIGHT,
     height=WIDTH
 )
 
+# Track whether the pen was down in the previous frame
+touch_down = False
+
 def touch_handler(x, y):
     """
-    Defines game logic for touchscreen touches.
+    Called once when the user first touches.
     """
-    print(f"X - {randint(1, 10)}")
+    print(f"Pen down once at {x}, {y}. Random: {randint(1, 100)}")
 
 def poll_touch():
     """
-    Call this each frame to do a quick, non-blocking touch check.
-    If a valid reading is available, call touch_handler(x, y).
+    Checks if the screen is being touched.
+      - If screen is newly pressed (was up, now down), call touch_handler(...) once.
+      - If still pressed in subsequent frames, do nothing.
+      - If touch is false, just reset state so next press triggers again.
     """
-    coords = touch.get_touch()
-    if coords:
-        x, y = coords
-        touch_handler(x, y)
+    global touch_down
+
+    if touch.is_pressed():
+        # If pen was not down before, call our handler for a new press
+        if not touch_down:
+            coords = touch.get_touch()
+            if coords is not None:
+                x, y = coords
+                touch_handler(x, y)
+
+            touch_down = True  # Mark pen is currently down
+    else:
+        # Pen is not pressed this frame
+        touch_down = False
 
 # --------------------------------------------------------------------------------
 # Cleanup
 # --------------------------------------------------------------------------------
 
 def cleanup():
-    """
-    Cleanup resources.
-    """
     if touch:
-        touch.int_pin.irq(handler=None)  # Disable any leftover interrupts
+        touch.int_pin.irq(handler=None)
         touch_spi.deinit()
     display.cleanup()
 
@@ -237,44 +222,39 @@ try:
     display.fill_rectangle(0, 0, WIDTH, HEIGHT, BG_COLOR)
 
     while True:
-        # Poll once per frame - no blocking
+        # Poll for new pen presses once per frame
         poll_touch()
 
+        # Update the ball position
         new_x, new_y, dx, dy = update_ball_position(ball_x, ball_y, dx, dy)
 
+        # Only redraw the bounding box where the ball moved
         if new_x != ball_x or new_y != ball_y:
-            # Only redraw the bounding box region where the ball moved
             x_min = min(ball_x, new_x) - BALL_RADIUS
             y_min = min(ball_y, new_y) - BALL_RADIUS
             x_max = max(ball_x, new_x) + BALL_RADIUS
             y_max = max(ball_y, new_y) + BALL_RADIUS
 
-            # Clip to screen
+            # Clip
             x_min, y_min = max(0, x_min), max(0, y_min)
             x_max, y_max = min(WIDTH - 1, x_max), min(HEIGHT - 1, y_max)
+
             region_width = x_max - x_min + 1
             region_height = y_max - y_min + 1
 
-            # Prepare a small buffer for that region
             region_buf = bytearray(region_width * region_height * 2)
             fb = FrameBuffer(region_buf, region_width, region_height, RGB565)
-
-            # Fill region with background
             fb.fill(BG_COLOR)
 
-            # Draw the ball in the buffer
             offset_x = new_x - x_min
             offset_y = new_y - y_min
             fill_ball(fb, offset_x, offset_y, BALL_RADIUS, BALL_COLOR)
 
-            # Push buffer to the display
             display.block(x_min, y_min, x_max, y_max, region_buf)
 
             ball_x, ball_y = new_x, new_y
 
         update_animation()
-
-        # Frame delay (0 -> max speed)
         sleep_ms(FRAME_TIME)
 
 except KeyboardInterrupt:
