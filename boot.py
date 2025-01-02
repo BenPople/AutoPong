@@ -11,7 +11,7 @@ HEIGHT = 240
 # Colors
 BG_COLOR = color565(0, 0, 0)       # Black
 TEXT_COLOR = color565(255, 255, 255)  # White
-BUTTON_COLOR = color565(0, 128, 255)  # Blue
+BUTTON_COLOR = color565(255, 0, 00)  # Blue (account for BGR565 for some reason here?)
 
 # Set up SPI + Display
 spi = SPI(1, baudrate=40_000_000, sck=Pin(14), mosi=Pin(13))
