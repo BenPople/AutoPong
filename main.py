@@ -14,15 +14,15 @@ WIDTH = 240
 HEIGHT = 320
 
 BALL_RADIUS = 10
-BALL_COLOR = color565(0, 0, 255)  # Blue
-BG_COLOR = color565(0, 0, 0)      # Black
+ball_color = color565(0, 0, 255)  # Blue
+bg_color = color565(0, 0, 0)      # Black
 
 ANIMS = True
 ANIM_COLOR = color565(255, 0, 0)  # Red
 SIDE_ANIM_DURATION = 100          # Animation duration in ms
 
 GRAVITY = 0.025
-PLAYER_NUDGE_FORCE = 2.0
+PLAYER_NUDGE_FORCE = 0.5
 
 FRAME_TIME = 0
 
@@ -54,7 +54,7 @@ def update_animation():
         y = current_anim['y']
         width = current_anim['width']
         height = current_anim['height']
-        display.fill_rectangle(x, y, width, height, BG_COLOR)
+        display.fill_rectangle(x, y, width, height, bg_color)
         current_anim = None
 
 def draw_side_animation_nonblocking(side, bx, by):
@@ -67,7 +67,7 @@ def draw_side_animation_nonblocking(side, bx, by):
             current_anim['y'],
             current_anim['width'],
             current_anim['height'],
-            BG_COLOR
+            bg_color
         )
         current_anim = None
 
@@ -179,61 +179,17 @@ touch = Touch(
 
 touch_down = False
 
-def touch_handler(x, y):
-    """
-    Called once when the user first touches.
-    If within 20 px of the ball, nudge it towards the furthest wall.
-    """
-    global ball_x, ball_y, dx, dy
-
-    dist_to_ball = sqrt((x - ball_x)**2 + (y - ball_y)**2)
-    print(f"Pen down at {x},{y} - distance to ball center is {dist_to_ball:.2f}")
-
-    if dist_to_ball <= 100:
-        dist_top = ball_y
-        dist_bottom = HEIGHT - ball_y
-        dist_left = ball_x
-        dist_right = WIDTH - ball_x
-
-        directions = {
-            'top': dist_top,
-            'bottom': dist_bottom,
-            'left': dist_left,
-            'right': dist_right
-        }
-        furthest_wall = max(directions, key=directions.get)
-
-        if furthest_wall == 'top':
-            dy -= PLAYER_NUDGE_FORCE
-        elif furthest_wall == 'bottom':
-            dy += PLAYER_NUDGE_FORCE
-        elif furthest_wall == 'left':
-            dx -= PLAYER_NUDGE_FORCE
-        elif furthest_wall == 'right':
-            dx += PLAYER_NUDGE_FORCE
-
 def poll_touch():
-    """
-    - We check touch.is_pressed().
-    - If newly pressed, read the raw coords from get_touch(), transform them,
-      and call touch_handler.
-    - If still pressed, do nothing.
-    - If not pressed, reset so next press triggers again.
-    """
     global touch_down
-
     if touch.is_pressed():
         if not touch_down:
-            coords = touch.get_touch()
-            if coords is not None:
-                raw_x, raw_y = coords
-                x_new = raw_y
-                y_new = (WIDTH - raw_x - 1)
-                touch_handler(x_new, y_new)
-
+            touch_handler()
             touch_down = True
     else:
         touch_down = False
+
+def touch_handler():
+    global ball_color, bg_color
 
 # --------------------------------------------------------------------------------
 # Cleanup
@@ -250,7 +206,7 @@ def cleanup():
 # --------------------------------------------------------------------------------
 
 try:
-    display.fill_rectangle(0, 0, WIDTH, HEIGHT, BG_COLOR)
+    display.fill_rectangle(0, 0, WIDTH, HEIGHT, bg_color)
 
     while True:
         poll_touch()
@@ -271,11 +227,11 @@ try:
 
             region_buf = bytearray(region_width * region_height * 2)
             fb = FrameBuffer(region_buf, region_width, region_height, RGB565)
-            fb.fill(BG_COLOR)
+            fb.fill(bg_color)
 
             offset_x = new_x - x_min
             offset_y = new_y - y_min
-            fill_ball(fb, offset_x, offset_y, BALL_RADIUS, BALL_COLOR)
+            fill_ball(fb, offset_x, offset_y, BALL_RADIUS, ball_color)
 
             display.block(x_min, y_min, x_max, y_max, region_buf)
 
